@@ -8,8 +8,10 @@ import PyPDF2
 import io
 
 app = Flask(__name__)
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))faq_data = [
-    {"q": "有給休暇の申請方法は？", "a": "マイページから「休暇申請」をクリックして申請してください。"},
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+faq_data = [
+        {"q": "有給休暇の申請方法は？", "a": "マイページから「休暇申請」をクリックして申請してください。"},
     {"q": "経費精算の締め日はいつですか？", "a": "毎月末日が締め日です。翌月10日までに申請してください。"},
     {"q": "リモートワークの申請はどうすればいいですか？", "a": "上長に事前にSlackで連絡し、承認を得てから実施してください。"},
 ]
