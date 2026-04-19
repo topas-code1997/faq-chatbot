@@ -1,4 +1,5 @@
 import re
+import uuid
 import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
@@ -9,8 +10,9 @@ class RAGEngine:
             model_name="paraphrase-multilingual-MiniLM-L12-v2"
         )
         self._client = chromadb.EphemeralClient()
+        collection_name = f"faq_rag_{uuid.uuid4().hex}"
         self.collection = self._client.create_collection(
-            name="faq_rag",
+            name=collection_name,
             embedding_function=self._ef,
             metadata={"hnsw:space": "cosine"},
         )
@@ -53,6 +55,14 @@ class RAGEngine:
             self.collection.delete(ids=existing["ids"])
         if source in self.uploaded_pdfs:
             self.uploaded_pdfs.remove(source)
+
+    def search(self, query, top_k=5):
+        count = self.collection.count()
+        if count == 0:
+            return []
+        n = min(top_k, count)
+        results = self.collection.query(query_texts=[query], n_results=n)
+        return results["documents"][0]
 
     @staticmethod
     def _safe_id(s):

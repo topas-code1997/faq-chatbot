@@ -59,3 +59,19 @@ def test_remove_source(engine):
     assert "temp.pdf" not in engine.uploaded_pdfs
     result = engine.collection.get(where={"source": "temp.pdf"})
     assert result["ids"] == []
+
+def test_search_returns_relevant_chunks(engine):
+    faqs = [{"q": "有給休暇の申請方法は？", "a": "マイページから申請してください。"}]
+    engine.add_faq(faqs)
+    results = engine.search("有給休暇を取りたい", top_k=1)
+    assert len(results) == 1
+    assert "有給" in results[0]
+
+def test_search_empty_collection_returns_empty():
+    fresh = RAGEngine()
+    results = fresh.search("何か質問")
+    assert results == []
+
+def test_search_top_k_limit(engine):
+    results = engine.search("申請", top_k=2)
+    assert len(results) <= 2
