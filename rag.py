@@ -1,5 +1,4 @@
 import re
-import uuid
 import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
@@ -10,12 +9,16 @@ class RAGEngine:
             model_name="paraphrase-multilingual-MiniLM-L12-v2"
         )
         self._client = chromadb.EphemeralClient()
-        collection_name = f"faq_rag_{uuid.uuid4().hex}"
         self.collection = self._client.create_collection(
-            name=collection_name,
+            name="faq_rag",
             embedding_function=self._ef,
             metadata={"hnsw:space": "cosine"},
+            get_or_create=True,
         )
+        # Clear any existing data to ensure a fresh instance
+        existing = self.collection.get()
+        if existing["ids"]:
+            self.collection.delete(ids=existing["ids"])
         self.uploaded_pdfs = []
 
     def _chunk_text(self, text, chunk_size=500, overlap=100):
