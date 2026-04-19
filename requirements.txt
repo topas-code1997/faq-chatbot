@@ -4,5 +4,4 @@ python-dotenv
 PyPDF2
 reportlab
 chromadb
-sentence-transformers
 gunicorn

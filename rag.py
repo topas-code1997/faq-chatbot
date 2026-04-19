@@ -1,13 +1,33 @@
+import os
 import re
 import chromadb
-from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+from openai import OpenAI
+
+
+class _OpenAIEmbeddingFunction:
+    def __init__(self):
+        self._client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    def _embed(self, input):
+        response = self._client.embeddings.create(
+            input=input,
+            model="text-embedding-3-small",
+        )
+        return [item.embedding for item in response.data]
+
+    def __call__(self, input):
+        return self._embed(input)
+
+    def embed_documents(self, input):
+        return self._embed(input)
+
+    def embed_query(self, input):
+        return self._embed(input)
 
 
 class RAGEngine:
     def __init__(self):
-        self._ef = SentenceTransformerEmbeddingFunction(
-            model_name="paraphrase-multilingual-MiniLM-L12-v2"
-        )
+        self._ef = _OpenAIEmbeddingFunction()
         self._client = chromadb.EphemeralClient()
         self.collection = self._client.create_collection(
             name="faq_rag",
@@ -15,7 +35,6 @@ class RAGEngine:
             metadata={"hnsw:space": "cosine"},
             get_or_create=True,
         )
-        # Clear any existing data to ensure a fresh instance
         existing = self.collection.get()
         if existing["ids"]:
             self.collection.delete(ids=existing["ids"])
@@ -28,6 +47,10 @@ class RAGEngine:
             chunks.append(text[start:start + chunk_size])
             start += chunk_size - overlap
         return chunks
+
+    @staticmethod
+    def _safe_id(s):
+        return re.sub(r"[^a-zA-Z0-9_-]", "_", s)
 
     def add_faq(self, faqs):
         existing = self.collection.get(where={"type": "faq"})
@@ -66,7 +89,3 @@ class RAGEngine:
         n = min(top_k, count)
         results = self.collection.query(query_texts=[query], n_results=n)
         return results["documents"][0]
-
-    @staticmethod
-    def _safe_id(s):
-        return re.sub(r"[^a-zA-Z0-9_-]", "_", s)
