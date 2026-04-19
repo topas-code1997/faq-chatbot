@@ -2,21 +2,23 @@ from flask import Flask, request, jsonify, render_template_string
 from openai import OpenAI
 from dotenv import load_dotenv
 import os
+import io
+import PyPDF2
+from rag import RAGEngine
 
 load_dotenv()
-import PyPDF2
-import io
 
 app = Flask(__name__)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+rag = RAGEngine()
 
 faq_data = [
-        {"q": "有給休暇の申請方法は？", "a": "マイページから「休暇申請」をクリックして申請してください。"},
+    {"q": "有給休暇の申請方法は？", "a": "マイページから「休暇申請」をクリックして申請してください。"},
     {"q": "経費精算の締め日はいつですか？", "a": "毎月末日が締め日です。翌月10日までに申請してください。"},
     {"q": "リモートワークの申請はどうすればいいですか？", "a": "上長に事前にSlackで連絡し、承認を得てから実施してください。"},
 ]
 
-pdf_text = ""
+rag.add_faq(faq_data)
 
 HTML = """
 <!DOCTYPE html>
@@ -214,36 +216,50 @@ def get_faq():
 def save_faq():
     global faq_data
     faq_data = request.json
+    rag.add_faq(faq_data)
     return jsonify({"status": "ok"})
 
 @app.route('/upload-pdf', methods=['POST'])
 def upload_pdf():
-    global pdf_text
     if 'pdf' not in request.files:
-        return jsonify({"success": False})
+        return jsonify({"success": False, "message": "ファイルが選択されていません"})
     file = request.files['pdf']
-    reader = PyPDF2.PdfReader(io.BytesIO(file.read()))
-    text = ""
-    for page in reader.pages:
-        text += page.extract_text() or ""
-    pdf_text = text
-    return jsonify({"success": True, "message": f"PDFを読み込みました（{len(reader.pages)}ページ）"})
+    if not file.filename:
+        return jsonify({"success": False, "message": "ファイル名が空です"})
+    try:
+        reader = PyPDF2.PdfReader(io.BytesIO(file.read()))
+        text = "".join(page.extract_text() or "" for page in reader.pages)
+        rag.add_pdf(text, file.filename)
+        return jsonify({
+            "success": True,
+            "message": f"{file.filename} を読み込みました（{len(reader.pages)}ページ）",
+            "pdfs": rag.uploaded_pdfs
+        })
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
 
 @app.route('/ask', methods=['POST'])
 def ask():
     question = request.json.get('question', '')
-    faq_text = "\n".join([f"Q: {f['q']}\nA: {f['a']}" for f in faq_data])
-    context = f"【FAQ情報】\n{faq_text}"
-    if pdf_text:
-        context += f"\n\n【PDFドキュメント】\n{pdf_text[:3000]}"
+    chunks = rag.search(question, top_k=5)
+    context = "\n\n".join(chunks) if chunks else "（関連情報が見つかりませんでした）"
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": f"あなたは親切な社内FAQアシスタントです。以下の情報をもとに、ユーザーの質問の意図を汲み取って柔軟に回答してください。情報にない場合は「申し訳ありません、その情報は持っていません。担当部署にお問い合わせください。」と答えてください。\n\n{context}"},
+            {"role": "system", "content": (
+                "あなたは親切な社内FAQアシスタントです。"
+                "以下の参考情報をもとに、ユーザーの質問に回答してください。"
+                "参考情報に答えがない場合は「申し訳ありません、その情報は持っていません。担当部署にお問い合わせください。」と答えてください。\n\n"
+                f"【参考情報】\n{context}"
+            )},
             {"role": "user", "content": question}
         ]
     )
     return jsonify({"answer": response.choices[0].message.content})
+
+@app.route('/pdfs', methods=['GET'])
+def list_pdfs():
+    return jsonify(rag.uploaded_pdfs)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
