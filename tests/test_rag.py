@@ -40,3 +40,22 @@ def test_add_faq_replaces_existing(engine):
     faqs = [{"q": "新しい質問", "a": "新しい回答"}]
     engine.add_faq(faqs)
     assert engine.collection.count() == 1
+
+def test_add_pdf_chunks_and_stores(engine):
+    text = "社内規則の内容です。" * 100
+    engine.add_pdf(text, "rules.pdf")
+    assert "rules.pdf" in engine.uploaded_pdfs
+
+def test_add_pdf_replaces_same_file(engine):
+    count_before = engine.collection.count()
+    text = "更新されたルールです。" * 10
+    engine.add_pdf(text, "rules.pdf")
+    count_after = engine.collection.count()
+    assert count_after <= count_before
+
+def test_remove_source(engine):
+    engine.add_pdf("テスト文書。" * 20, "temp.pdf")
+    engine.remove_source("temp.pdf")
+    assert "temp.pdf" not in engine.uploaded_pdfs
+    result = engine.collection.get(where={"source": "temp.pdf"})
+    assert result["ids"] == []

@@ -35,6 +35,25 @@ class RAGEngine:
         metadatas = [{"source": "faq", "type": "faq"} for _ in faqs]
         self.collection.add(documents=documents, ids=ids, metadatas=metadatas)
 
+    def add_pdf(self, text, filename):
+        self.remove_source(filename)
+        chunks = self._chunk_text(text)
+        if not chunks:
+            return
+        safe = self._safe_id(filename)
+        ids = [f"{safe}_{i}" for i in range(len(chunks))]
+        metadatas = [{"source": filename, "type": "pdf"} for _ in chunks]
+        self.collection.add(documents=chunks, ids=ids, metadatas=metadatas)
+        if filename not in self.uploaded_pdfs:
+            self.uploaded_pdfs.append(filename)
+
+    def remove_source(self, source):
+        existing = self.collection.get(where={"source": source})
+        if existing["ids"]:
+            self.collection.delete(ids=existing["ids"])
+        if source in self.uploaded_pdfs:
+            self.uploaded_pdfs.remove(source)
+
     @staticmethod
     def _safe_id(s):
         return re.sub(r"[^a-zA-Z0-9_-]", "_", s)
