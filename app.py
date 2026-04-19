@@ -121,14 +121,15 @@ HTML = """
   <div id="pdf-view">
     <div class="pdf-card">
       <h2>📄 PDFをアップロード</h2>
-      <p>社内マニュアルや規則集をアップロードすると、その内容をもとに回答できるようになります。</p>
+      <p>複数のPDFを読み込めます。アップロードした内容をベクトル検索してAIが回答します。</p>
       <div class="upload-area" onclick="document.getElementById('pdf-input').click()">
-        <input type="file" id="pdf-input" accept=".pdf" onchange="uploadPdf(this)">
+        <input type="file" id="pdf-input" accept=".pdf" multiple onchange="uploadPdfs(this)">
         <div class="icon">📂</div>
-        <div class="text">クリックしてPDFを選択</div>
+        <div class="text">クリックしてPDFを選択（複数可）</div>
         <div class="hint">または PDFファイルをここにドロップ</div>
       </div>
       <div id="status-box" class="status-box"></div>
+      <div id="pdf-list" style="margin-top:16px;"></div>
     </div>
   </div>
 </div>
@@ -139,7 +140,8 @@ async function showTab(tab) {
     document.getElementById(t+'-view').style.display = t===tab?'block':'none';
     document.getElementById('btn-'+t).className = t===tab?'active':'';
   });
-  if(tab==='admin') await loadFaq();
+  if (tab === 'admin') await loadFaq();
+  if (tab === 'pdf') await loadPdfList();
 }
 async function loadFaq() {
   const res = await fetch('/faq');
@@ -164,24 +166,52 @@ async function saveFaq() {
   await fetch('/faq',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(faqs)});
   alert('保存しました！');
 }
-async function uploadPdf(input) {
-  const file = input.files[0];
-  if(!file) return;
-  const formData = new FormData();
-  formData.append('pdf', file);
+async function uploadPdfs(input) {
+  const files = Array.from(input.files);
+  if (!files.length) return;
   const status = document.getElementById('status-box');
   status.style.display = 'block';
   status.className = 'status-box';
-  status.textContent = '📤 アップロード中...';
-  const res = await fetch('/upload-pdf', {method:'POST', body: formData});
-  const data = await res.json();
-  if(data.success) {
-    status.className = 'status-box status-success';
-    status.textContent = '✅ ' + data.message;
-  } else {
-    status.className = 'status-box status-error';
-    status.textContent = '❌ エラーが発生しました';
+  status.textContent = files.length + '件アップロード中...';
+  let lastPdfs = [];
+  for (const file of files) {
+    const formData = new FormData();
+    formData.append('pdf', file);
+    const res = await fetch('/upload-pdf', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (!data.success) {
+      status.className = 'status-box status-error';
+      status.textContent = file.name + ': ' + data.message;
+      return;
+    }
+    lastPdfs = data.pdfs || [];
   }
+  status.className = 'status-box status-success';
+  status.textContent = files.length + '件のPDFを登録しました';
+  renderPdfList(lastPdfs);
+  input.value = '';
+}
+
+function renderPdfList(pdfs) {
+  const el = document.getElementById('pdf-list');
+  while (el.firstChild) el.removeChild(el.firstChild);
+  if (!pdfs.length) return;
+  const header = document.createElement('div');
+  header.style.cssText = 'font-size:13px;color:#555;font-weight:600;margin-bottom:8px;';
+  header.textContent = '登録済みPDF';
+  el.appendChild(header);
+  pdfs.forEach(function(name) {
+    const item = document.createElement('div');
+    item.style.cssText = 'padding:6px 12px;background:#f0f4ff;border-radius:8px;margin-bottom:4px;font-size:13px;';
+    item.textContent = name;
+    el.appendChild(item);
+  });
+}
+
+async function loadPdfList() {
+  const res = await fetch('/pdfs');
+  const pdfs = await res.json();
+  renderPdfList(pdfs);
 }
 async function send() {
   const input = document.getElementById('input');
